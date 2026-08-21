@@ -1,0 +1,323 @@
+---
+title: "Session 3 in class activity"
+author: "Chenxin Li"
+date: "2026-06-22"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+In this lesson we will go over correlation and linear regression. 
+
+1.  What is correlation and how to interpret them?
+2.  What is regression?
+3.  How to perform linear regression? 
+
+# Packages 
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+
+# What is correlation, what it means, and what it does not mean.
+Correlation describes that as one variable changes, 
+the other variable changes in a consistent direction.  
+To visualize that, we'll use income and child mortality rate across countries as an example.   
+
+We will load "S3_example1.csv" and "S3_example2.csv" from the Data folder. 
+These are two datasets downloaded from the [Gapminder foundation](https://www.gapminder.org/data/). 
+
+* "S3_example1.csv" contains child mortality (0 - 5 year old) per 1000 born.
+* "S3_example2.csv" contains average births per family.  
+* "S3_example3.csv" contains income data.   
+
+These were recorded/estimated from year 1800 and projected all the way to 2100.
+```{r}
+deaths <- read_csv("../Data/S3_example1.csv") 
+births <- read_csv("../Data/S3_example2.csv") 
+income <- read_csv("../Data/S3_example3.csv")
+```
+These tables are not in tidy format. The years are spread out across 200+ columns.
+Let's make them into the tidy format first, and then we'll join them by matching the country and year columns.
+
+```{r}
+deaths_tidy <- deaths %>% 
+  pivot_longer(cols = !country, names_to = "year", values_to = "deaths")
+
+births_tidy <- births %>% 
+  pivot_longer(cols = !country, names_to = "year", values_to = "births")
+
+income_tidy <- income %>% 
+  pivot_longer(cols = !country, names_to = "year", values_to = "income")
+```
+
+Then we can join them together into one data frame by matching the country and year entries. 
+```{r}
+deaths_births_income_tidy <- deaths_tidy %>% 
+  inner_join(births_tidy, by = c("country", "year")) %>% 
+  inner_join(income_tidy, by = c("country", "year")) %>% 
+  mutate(log10_income = log10(income)) 
+
+head(deaths_births_income_tidy)
+```
+(FYI: income has a huge range and not normally distributed. The best way is to do a log transformation on income first.)
+There are a lot of data. For the sake of this discussion, we'll just look at year 1945 (when WWII ended) for now. 
+
+```{r}
+data_1945 <- deaths_births_income_tidy %>% 
+  filter(year == 1945)
+```
+
+I'm going to plot log10(income) on the x axis and child mortality on the y axis.
+
+```{r}
+data_1945 %>% 
+  ggplot(aes(x = log10_income, y = deaths)) +
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", se = F) +
+  labs(x = "log10(income)", y = "child mortality / 1000 births") +
+  theme_classic()
+```
+
+As you can see, across countries, as income increases, child mortality decreases.
+With this, we can verbally say that "income and child mortality are negatively correlated (or anti-correlated)".
+
+But what is the statistics to quantify that?
+We will use the correlation test.
+
+The correlation test, like any statistical methods, has a few assumptions.
+
+1.  Each observation is independent of each other. The measurement of one does not affect the other, and no repeated measures.
+2.  Normality: The data are normally distributed.
+3.  Equal variance across the range of values
+4.  No outliers
+5.  Related pairs: Each x value has one and only one corresponding y value.
+6.  Linearity: There is a linear relation between the two variables.
+
+It turns out the easiest way to check these assumptions is to just look at the scatter plot.
+
+Does it look like there is a linear relation? - Yes. 
+Does it look like there is more or less an even spread of dots along the range of values? - More or less okay.
+Are there any outliers (dots that are all the way out there)? - There is quite a spread, but I don't think there are outliers.
+
+## The correlation test
+To do a correlation test, use the `cor.test()` function.
+```{r}
+cor.test(data_1945$deaths, data_1945$log10_income)
+```
+
+In the most applied sense, the two important numbers are "cor" and p-value.
+The "cor" is the correlation coefficient. In publications, it is often times notated by the lowercase letter "r".
+It ranges from +1 to -1.
+
+* A value of +1 means the two variables are perfectly correlated, meaning increase in one variable leads to a perfect, consistent increase in the other variable.
+* A value of -1 means the two variables are perfectly negatively correlated, meaning increase in one variable leads to a perfect, consistent decrease in the other variable.
+* A value of 0 means there is no correlation between the two variables. 
+
+The null hypothesis of r is 0.  
+The p value is the probability of observing an r value and more extreme, 
+given the number of degrees of freedom, and if r were to be 0.
+
+So what does the this correlation test tells us?
+r = -0.62, so we have a moderate correlation. It's not surprising, as there is quite a spread across the line.
+The p-value is < 2.2e-16, which means if r were to be 0,
+the probability of finding r < -0.62 and less is less than 2.2e-16. 
+We should reject the null hypothesis.
+So log10(income) and child mortality are definitely anti-correlated.
+
+**Note that the p value does not indicate how strong the correlation is.** 
+A low p value does not always mean a strong correlation.
+Only when both |r| is large and the p value is low do you have a strong correlation.
+
+## Be VERY CAREFUL when you interpret a correlation.
+1.  If two variables are correlated, it _DOES NOT_ mean one causes the other.
+2.  Correlation is non-directional. It does not say which variable is independent, and which is dependent. So cor.test(x, y) gives the same result as cor.test(y, x).
+
+## Non-linear correlation
+Can I do a correlation when the trend is non-linear?
+Yes, but you have to do an ordinal correlation instead.
+You will correlate the rank order of the variables instead of the actual numbers.
+Let's do an example.
+
+We want to correlate child mortality and income (not log10).
+Let's plot this dataset to check assumptions first.
+```{r}
+data_1945 %>% 
+  ggplot(aes(x = income, y = deaths)) +
+  geom_point(alpha = 0.8) +
+  theme_classic()
+```
+
+Now you can see the trend is clearly non-linear. As income increases, mortality does not linearly decrease.
+There is a workaround for this. We'll use the Spearman's method for ordinal correlation.
+In the cor.test() function, we will add `method = "s"` argument to
+specify we are using Spearman's method for correlating rank orders.
+```{r}
+cor.test(data_1945$deaths, data_1945$income, method = "s")
+```
+
+What R does here is it ranks the numbers in both variables first, then it correlates the ranks.
+rho is the Spearman's version of `cor`. You would interpret rho and p-value the same way as you would for a common correlation.
+We actually get very comparable results here.
+
+# Linear regression 
+A related statistical method is linear regression.  
+Linear regression requires the dependent and independent variables to be defined.  
+A linear regression model is a linear model that describes an equation relating the two variables of interest.
+In a linear regression, the relation will be y = ax + b,
+where "a" is the slope and "b" is the intercept.
+By performing a linear regression, you will find the values of the slope and intercept.
+Linear regression has the same assumptions as correlation. Again, the best way to check is to look at the scatter plot.   
+Let's load an example. 
+```{r}
+qPCR <- read_excel("../Data/S3_example4.xlsx")
+head(qPCR)
+```
+
+In this example, we are doing quantitative PCR (qPCR) quantification of DNA concentration.  
+In a qPCR machine, we run samples with known DNA concentration 
+and monitor how many PCR cycles it takes to reach a certain threshold of detection (cq value). 
+The higher the DNA concentration, the lower the cq value. 
+The cq value has a linear relationship with the log of the concentration. 
+We will use this linear relationship as a standard curve. 
+Then we can use the standard curve to calculate samples with known DNA concentration based on the Cq value.  
+
+Let's plot it first. 
+```{r}
+qPCR %>% 
+  ggplot(aes(x = cq, y = log10(molecules))) +
+  geom_point() +
+  theme_classic()
+```
+Looks like there is a strong linear relationship, no outliers, and variance is similar across the whole range of data. 
+
+## Setting up a linear regression model 
+To set up a linear model, we use `lm()`.  
+The general form is `lm(y ~ x)`, which is interpreted as "y modeled by x". 
+In this case, we use Cq as the independent variable because this is what we are measuring from the qPCR machine. We will then use the regression to estimate the DNA concentration. 
+Similarly, for example, in an experiment, 
+say we are looking at the rate of an enzyme across different substrate concentrations. 
+We should do `rate ~ conc`, because the concentration is the independent variable and
+the rate is the response variable.
+
+```{r}
+model1 <- lm(log10(molecules) ~ cq, data = qPCR) 
+```
+
+## Checking normality of errors 
+We can check the assumptions of linear regression using the `plot()` function.
+One thing to note in linear models is that the data do not need to be normally distributed, 
+and only the errors (also known as residues) need to be normally distributed. 
+This means that the data need to be normally distributed around the best fit line,
+but the data overall do not need to be normally distributed. 
+```{r}
+plot(model1, which = 2)
+```
+This is called the normal QQ plot. 
+If the residues (errors) are normally distributed, they should fall on a straight line. 
+In this case it more or less falls on a straight line. 
+
+If you are not sure, you can simulate normqq plots from a few normal distribution and check for yourself.
+```{r}
+rnorm(mean = 0, sd = 1, n = nrow(qPCR)) %>% qqnorm() 
+```
+
+The code `rnorm()` generates normally distributed random numbers.
+The `n = nrow(qPCR)` argument generate the same number of data points in qPCR data.
+Every time you run the above chuck, the output will be different
+because the numbers are randomly generated.
+Run it several times to have an idea of what you should expect. 
+
+## Check equal variance 
+```{r}
+plot(model1, which = c(1, 3)) 
+```
+The first graph is called residues vs. Fitted.
+It is plotting the y value of the best fitted line on the x axis and the errors on the y axis.
+If the variances are equal, you should see roughly the same amount of spread across the line.
+It looks fine to me.
+
+The second graph is called scale location.
+Again x axis is still the best fitted line,
+but the y axis is now square root of absolute values of errors.
+If the variances are equal, you should see roughly a flat line.
+It looks more or less fine to me.
+
+## Interpret a linear regression
+```{r}
+summary(model1)
+```
+
+The `summary()` function allows you to interpret your regression model.
+The coefficients are the intercept and slope.
+Looks like we have an intercept = 10.84, and slope = -0.27
+You can look at their t values as well.
+The null hypothesis is t = 0. The further the observed t is from 0, the less likely the null hypothesis is true. 
+We have t = 169 for intercept and t = -73 for slope. Both are _very_ far from zero. 
+You will reject the null hypothesis of t = 0 for both coefficients. 
+
+So your equation will be: log10(molecules) = -0.27 * Cq + 10.84
+For every 1 unit increase of Cq, the log10(molecules) value reduces by 0.27 units. 
+
+## Goodness of fit 
+An important result of a linear regression is R squared.
+R squared is the measurement of goodness-of-fit.
+It is the fraction of variation explained by the model.
+It ranges from 0 to 1.
+A value of 0 means 0% of the variance is explained by the model, meaning poor fit.
+A value of 1 means 100% of the variance is explained by the model, meaning perfect fit.
+
+A related concept is adjusted R^2. Adjusted R^2 corrects for the number of parameters in the model.
+In this example, we have two parameters: slope and intercept.
+Adding more parameters to the model always increases R^2 because there is always variation that can be explained by chance.
+Adjusted R^2 corrects for that.  
+The null hypotheses of R^2 and adjusted R^2 are 0.
+
+In this case our R^2 is 0.9978, which means >99% of the variances in log10(molecules) can be explained by the model, which is great! 
+
+## Predict intermediate values
+Say we have an unknown DNA sample with a Cq value of 20. 
+How many molecules does this unknown sample have? 
+We will plug it in. 
+```{r}
+log10_molecules <- -0.27 * 20 + 10.84
+10^log10_molecules
+```
+That gives us 275422.9 DNA molecules.  
+
+# In class activity 
+## Q1 
+Use the data from the table `deaths_births_income_tidy`. 
+Filter data for the year 2015. 
+Visualize the relation between birth and child mortality across countries in year 2015. 
+Is there a correlation between births per family and child mortality? Do a correlation test. 
+
+## Q2 
+Use the `read_excel()` function to load "S2_activity1.xlsx" from the Data folder. 
+In this [paper](https://link.springer.com/article/10.1186/s12870-020-2243-7), 
+researchers evaluated the regeneration potential (number of buds and shoots) of daylily 
+across 19 different varieties, 3 hormone treatments, and 3 explant types.  
+
+During regeneration, plant tissues first develop primordia, 
+then the primordia have the potential to continue developing into buds or shoots. 
+
+1. Visualize the data using a scatter plot. 
+
+2. Fit a linear regression model to model the number of buds/shoots based on the number of primordia. 
+
+3. Does the data satisfy the assumptions of linear models? 
+
+4. What are coefficients and R2? 
+
+5. Do you think the model is a good fit for the data? 
+ 
+
+
+
+
+
+

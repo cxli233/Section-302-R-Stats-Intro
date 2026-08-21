@@ -1,0 +1,369 @@
+---
+title: "S10 in class activity"
+author: "Chenxin Li"
+date: "2026-06-25"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+In this lesson we will talk about:
+
+1. How to do a Principal Component Analysis (PCA) in R.
+2. How to interpret and explore the results of PCA. 
+
+# Packages
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(readxl)
+```
+
+PCA itself does not require any external packages. 
+`tidyverse` and `RColorBrewer` is only for graphing. 
+
+# Visualizing high dimensional data 
+Let’s start with something simple and work our way up there. 
+Let's load the penguin dataset from the Data folder as an example. 
+```{r}
+penguins <- read_csv("../Data/S4_example1.csv")
+head(penguins)
+dim(penguins)
+```
+We have 344 observations at 8 variables. 
+If we want to visualize 2 variables, we can make a simple x-y scatter plot. 
+```{r}
+penguins %>% 
+  ggplot(aes(x = bill_len, y = bill_dep)) +
+  geom_point(aes(color = species), size = 3)+
+  scale_color_manual(values = brewer.pal(n = 8, "Set2")) +
+  labs(x = "bill length",
+       y = "bill depth") +
+  theme_classic()
+```
+When we have high dimensional data, 
+we will need to perform dimension reduction using PCA to flatten the data into 2-D. 
+The main idea of PCA is that it finds correlated variables
+and collapses them into a shared axis called a principal component (PC).   
+When R performs PCA, the first PC (PC1) will span the most variation in the dataset,
+followed by PC2, PC3, and so on. 
+
+# Running PCA 
+To run PCA in R, you want to have the following:  
+
+1. A numeric matrix where rows are samples and columns are variables. 
+2. log-transform or z-score for the input matrix is recommended, so that the PCs won't be dominated by variables with higher numeric values. 
+3. Row names of the matrix to identify which sample is which for downstream analysis. 
+4. For graphing and downstream analysis, descriptions for each sample will be helpful (metadata). 
+
+Let's try an example. 
+```{r}
+bean_heat <- read_excel("../Data/S10_example1.xlsx")
+head(bean_heat)
+```
+
+Data were taken from [this paper](https://www.nature.com/articles/s41467-021-22858-x). In this study, the authors looked at gene expression of tepary bean leaves under control and heat stress. They sampled 5 time points during the stress treatment. One of the goals of the experiment was to understand gene regulation in response to heat stress at early stages of stress.
+
+We can analyze the experimental design with a table. 
+
+|   source     | factor | levels |
+|:------------:|:------:|:------:|
+|  heat stress | treat  |   2    |
+|  time point  | treat  |   5    |
+|  libraries   | OU, EU |   30   | 
+
+This is a multifactorial experiment. 
+```{r}
+dim(bean_heat)
+```
+It looks like each row is a gene, and each column is a variable. 
+The experiment detected 27541 expressed genes across 30 libraries. 
+The values in the table are normalized expression (FPKM, according to the authors). 
+Also, according to the authors, the library "C_12hr_B1" failed. We will go ahead and remove it. 
+I also found that some genes were repeated in the table.
+There is no explanation on why that is. 
+I removed the duplicated gene names by keeping their first entry. 
+As you can see, real data can be messy. 
+
+## log transform and z score 
+First, I will use tidyverse functions to turn this table into a tidy form. 
+Then, I will log transform the expression values. 
+This is recommended so that the PCA won't be dominated by the most highly expressed genes. 
+```{r}
+bean_heat_long <- bean_heat %>% 
+  distinct(LocusName, .keep_all = T) %>% 
+  dplyr::select(-C_12hr_B1) %>% 
+  pivot_longer(cols = !LocusName, names_to = "library", values_to = "FPKM") %>% 
+  mutate(FPKM = case_when(
+    is.na(FPKM) ~ 0,
+    T ~ FPKM
+  )) %>% 
+  mutate(logFPKM = log10(FPKM + 1)) 
+
+head(bean_heat_long)
+```
+
+## Long to wide 
+PCA requires a matrix, so we have to go back to wide format again. 
+We will need libraries as rows and genes as columns, and fill the table with logFPKM values.  
+We will also need row names to keep track of which library is which after we do PCA. 
+```{r}
+bean_heat_for_PCA <- bean_heat_long %>% 
+  dplyr::select(LocusName, library, logFPKM) %>% 
+  pivot_wider(names_from = LocusName, values_from = logFPKM) %>% 
+  as.data.frame()
+
+row.names(bean_heat_for_PCA) <- bean_heat_for_PCA$library
+
+head(bean_heat_for_PCA)
+```
+
+## Run PCA
+To run PCA, call `prcomp()` in R. 
+We just need to feed `bean_heat_for_PCA` (not including the `library` column) into `prcomp()`.
+```{r}
+my_pca <- prcomp(bean_heat_for_PCA[, -1])
+```
+
+# How much variance does each PC explain? 
+The first diagnostic of PCA is to check how much variance each PC explains. 
+See the code below to understand how to do it. 
+```{r}
+pc_importance <- as.data.frame(t(summary(my_pca)$importance))
+pc_importance
+```
+You can see that PC1 explains 48% of the variance, followed by PC2, which explains the 13%. 
+Between the first 2 PCs, we explained more than half of the variances.
+You can also plot it. 
+```{r}
+pc_importance %>% 
+  ggplot(aes(x = 1:29, y = `Proportion of Variance`)) +
+  geom_bar(stat = "identity") +
+  labs(x = "PC 1-29") +
+  theme_classic()
+
+pc_importance %>% 
+  ggplot(aes(x = 1:29, y = `Cumulative Proportion`)) +
+  geom_bar(stat = "identity") +
+  labs(x = "PC 1-29") +
+  theme_classic()
+```
+I've seen experiments where the first 2 PCs explained >90% of variances. 
+But overall, this is what you should typically expect. 
+
+# Graphing PCA results
+The results from PCA are stored as a list. One of the objects in the list is called `x`.
+`x` stores the coordinate of each sample in the PC space,
+where each row is a sample, and each column is a PC. 
+
+
+## Metadata
+To facilitate graphing, we need metadata to explain which library is which. 
+According to the naming convention of the authors: 
+
+* `C` vs `S` in library names stands for control vs stressed.
+* Data were collected at 1, 3, 6, 12, and 24 hrs post treatment.
+* Library names ending with B1, B2, or B3 correspond to the 3 bio-reps. 
+
+We can parse that out:
+```{r}
+Metadata <- data.frame(
+  library = colnames(bean_heat)[-1]
+) %>% 
+  mutate(treatment = case_when(
+    str_detect(library, "C_") ~ "control",
+    str_detect(library, "S_") ~ "heat"
+  )) %>% 
+  mutate(time_point = case_when(
+    str_detect(library, "_1hr_") ~ "1",
+    str_detect(library, "_3hr_") ~ "3",
+    str_detect(library, "_6hr_") ~ "6",
+    str_detect(library, "_12hr_") ~ "12",
+    str_detect(library, "_24hr_") ~ "24"
+  )) %>% 
+  mutate(time_point = factor(time_point, levels = c(1, 3, 6, 12, 24))) %>% 
+  filter(str_detect(library,"C_12hr_B1") == F)
+
+dim(Metadata)
+```
+Now we simply need to join the metadata to `x`. 
+```{r}
+PCA_coord <- my_pca$x %>% 
+  as.data.frame() %>% 
+  mutate(library = row.names(.)) %>% 
+  full_join(Metadata, by = "library")
+
+head(PCA_coord)
+```
+
+## Plot PCA
+```{r}
+PCA_coord %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = time_point), color = "grey20", shape = 21, size = 3, alpha = 0.8) +
+  scale_fill_manual(values = brewer.pal(n = 5, "PiYG")) +
+  labs(x = paste("PC1 (", pc_importance[1, 2] %>% signif(3)*100, "% of Variance)", sep = ""), 
+       y = paste("PC2 (", pc_importance[2, 2] %>% signif(3)*100, "% of Variance)", "  ", sep = ""),
+       fill = "time point") +  
+  theme_bw() +
+  theme(
+    text = element_text(size= 14),
+    axis.text = element_text(color = "black")
+  )
+```
+
+```{r}
+PCA_coord %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = treatment), color = "grey20", shape = 21, size = 3, alpha = 0.8) +
+  scale_fill_manual(values = c("grey70", "tomato1")) +
+  labs(x = paste("PC1 (", pc_importance[1, 2] %>% signif(3)*100, "% of Variance)", sep = ""), 
+       y = paste("PC2 (", pc_importance[2, 2] %>% signif(3)*100, "% of Variance)", "  ", sep = ""),
+       fill = "treatment") +  
+  theme_bw() +
+  theme(
+    text = element_text(size= 14),
+    axis.text = element_text(color = "black")
+  )
+```
+
+It might not make sense in the 1st glance, but time is circular! 24hr is very close to 1hr in the diurnal sense. 
+It seems PC1 separates midnight (time point 24) from noon (time point 12), 
+and PC2 is driven by the difference between time point 6 and the rest of the time points. 
+
+```{r}
+PCA_coord %>% 
+  ggplot(aes(x = PC2, y = PC3)) +
+  geom_point(aes(fill = treatment), shape = 21,size = 3, alpha = 0.8, color = "grey20") +
+  scale_fill_manual(values = c("grey70", "tomato1")) +
+  labs(x = paste("PC2 (", pc_importance[2, 2] %>% signif(3)*100, "% of Variance)", sep = ""), 
+       y = paste("PC3 (", pc_importance[3, 2] %>% signif(3)*100, "% of Variance)", "  ", sep = ""),
+       fill = "treatment") +  
+  theme_bw() +
+  theme(
+    text = element_text(size= 14),
+    axis.text = element_text(color = "black")
+  )
+```
+If we plot the next PC, which is PC3 against PC2, 
+we will find that the control and heat treatments are separated along PC3. 
+
+```{r}
+PCA_coord %>% 
+  ggplot(aes(x = PC3, y = PC4)) +
+  geom_point(aes(fill = treatment), shape = 21,size = 3, alpha = 0.8, color = "grey20") +
+  scale_fill_manual(values = c("grey70", "tomato1")) +
+  labs(x = paste("PC3 (", pc_importance[3, 2] %>% signif(3)*100, "% of Variance)", sep = ""), 
+       y = paste("PC4 (", pc_importance[4, 2] %>% signif(3)*100, "% of Variance)", "  ", sep = ""),
+       fill = "treatment") +  
+  theme_bw() +
+  theme(
+    text = element_text(size= 14),
+    axis.text = element_text(color = "black")
+  )
+```
+If we plot the next PC, which is PC4 against PC3, 
+we will find that PC4 separates a single library from the rest. 
+Since the first 3 PC together explained most of the variance for this experiment, 
+we are probably just looking at the noise in each individual samples for PC4 and beyond. 
+
+# Explore which variable drives separation along PCs
+One of the results of PCA is stored as the `rotation` matrix. 
+This is also called the "loading" on each PC. 
+In this matrix, each row is a variable, which is a gene.
+Each column is a PC. 
+A positive value means that when a gene is higher expressed, 
+it moves a sample further along that PC. 
+A negative value means that when a gene is higher expressed, 
+it moves a sample to the opposite direction of the PC. 
+
+Let's say we are interested in heat stress, 
+and we know heat vs control is separated along PC3. 
+We can check which genes have the highest (most positive or most negative) loading for PC3. 
+```{r}
+heat_candidate_genes <- my_pca$rotation %>% 
+  as.data.frame() %>% 
+  mutate(LocusName = row.names(.)) %>% 
+  pivot_longer(cols = !LocusName, names_to = "PC", values_to = "loading") %>% 
+  filter(PC == "PC3") %>% 
+  arrange()
+
+heat_candidate_genes %>% 
+  ggplot(aes(x = loading)) +
+  geom_histogram(bins = 100) +
+  theme_classic()
+```
+You can see most of the genes have 0 loading for PC3. 
+However, there are a small number of genes that are quite far out in the distribution at either extreme. 
+Let's take the top 3 and bottom 3 genes and check their expression. 
+```{r}
+heat_candidate_genes %>% 
+  slice_max(order_by = loading, n = 3) %>% 
+  inner_join(bean_heat_long, by = "LocusName") %>% 
+  inner_join(Metadata, by = "library") %>%  
+  ggplot(aes(x = time_point, y = logFPKM)) +
+  facet_wrap(~LocusName)+
+  ggbeeswarm::geom_quasirandom(aes(color = treatment)) +
+  stat_summary(geom = "line", 
+               fun.data = mean_se, aes(group = treatment, color = treatment), linewidth = 1.2)+
+  stat_summary(geom = "linerange", 
+               fun.data = mean_se, aes(group = treatment, color = treatment))+
+  scale_color_manual(values = c("grey70", "tomato1")) +
+  labs(x = "time point")+
+  theme_classic()
+```
+The top 3 genes with the highest loading on PC3 are all higher in the control relative to the heat treatment.
+This is as expected, since control samples are higher along PC3 relative to the heat sample. 
+
+```{r}
+heat_candidate_genes %>% 
+  slice_min(order_by = loading, n = 3) %>% 
+  inner_join(bean_heat_long, by = "LocusName") %>% 
+  inner_join(Metadata, by = "library") %>%  
+  ggplot(aes(x = time_point, y = logFPKM)) +
+  facet_wrap(~LocusName)+
+  ggbeeswarm::geom_quasirandom(aes(color = treatment)) +
+  stat_summary(geom = "line", 
+               fun.data = mean_se, aes(group = treatment, color = treatment), linewidth = 1.2)+
+  stat_summary(geom = "linerange", 
+               fun.data = mean_se, aes(group = treatment, color = treatment))+
+  scale_color_manual(values = c("grey70", "tomato1")) +
+  labs(x = "time point")+
+  theme_classic()
+```
+The top 3 genes with the most negative loading on PC3 are all higher in the heat treatment relative to the control.
+This is as expected, since control samples are higher along PC3 relative to the heat sample. 
+A negative loading will move the samples to a lower PC3 value. 
+
+# In class activity 
+## Q1
+Load "S10_activity1.csv" from the Data folder. 
+This is a transcriptome dataset with 18 samples from 6 tissues.  
+In the table, each row is a gene, and each column is an RNA-seq library. 
+The 6 tissue types are: 
+
+1. immature top leaf
+2. middle leaf
+3. mature bottom leaf
+4. primary root
+5. secondary root 
+6. immature top stem 
+
+Each tissue type has 3 replicates, labelled as R1, R2, and R3, respectively. 
+
+1. Run a PCA on this dataset.
+2. How much variance does each PC explain? 
+3. Parse the sample IDs to produce a metadata table. 
+4. Make a PCA plot. 
+5. Explore the PCA results. 
+
+
+
+
+
+
+
+

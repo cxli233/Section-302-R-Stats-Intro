@@ -1,0 +1,278 @@
+---
+title: "Session 6 in class activity"
+author: "Chenxin Li"
+date: "2026-06-23"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+We went over how to perform one-way ANOVA to compare means of multiple treatments.
+This time we'll cover a common experimental design, that is randomized block design. 
+
+We'll go over
+
+1.  What are blocking factors
+2.  Why they may be useful 
+3.  How to analyze an experiment that has blocking factors
+
+# Packages
+```{r}
+library(tidyverse)
+library(emmeans)
+library(multcomp)
+library(multcompView)
+```
+
+# What is a blocking factor? 
+As an example, we'll use the R built-in dataset OrchardSpray.
+This is an experiment with different spray treatments and compares their effect (the decrease of pests).
+Ref: McNeil, D. R. (1977) Interactive Data Analysis. New York: Wiley.
+```{r}
+head(OrchardSprays)
+```
+
+It has 64 observations with 8 different treatments. 
+`decrease` is decrease in pest count, which will be our depedent variable. 
+To set up a linear model for ANOVA, it would just be `lm(decrease ~ treatment)`.  
+
+However, there are two other columns: "rowpos" and "colpos".
+They stand for row position and column position. These are blocking factors.
+What exactly are they?
+
+The best way to understand them is to plot out the experimental design in ggplot.
+```{r}
+OrchardSprays %>% 
+  ggplot(aes(x = colpos, y = rowpos)) +
+  geom_tile(color = "black", fill = NA) +
+  geom_text(aes(label = treatment)) +
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8)) +
+  scale_y_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8)) +
+  labs(x = "columns",
+      y = "rows") +
+  theme_classic()+
+  coord_fixed()
+```
+
+This is the design of the experiment.
+It is an 8x8 field. Each spot received a spray treatment (one of A-H),
+and the treatments (A-H) were randomized across rows and columns.
+We call the rows and columns blocking factors, in the sense that each row is a block, and each column is a block.
+
+In reality, blocking factors can be as simple as a test tube rack. 
+
+-   rack 1
+    | a | b | b | a | a | b |
+
+-   rack 2
+    | a | b | b | a | a | b |
+
+In this example, I have two racks; each rack has 6 test tubes.
+Each rack has two treatments (a vs. b), and 3 replicates each.
+Each rack can be used as a blocking factor.
+
+In reality, blocking factors can be people as well.
+Let's Say two students, Adel and Ben, needed to weigh 500 apples.
+Adel weighed half of them, and Ben weighed the rest.
+In this example, the person (Adel vs. Ben) can be used as a blocking factor.
+
+# Why should one use blocking factors in an experiment?
+Blocking factors allow you to control for unintended variations.
+
+Let's use the 8x8 plot as an example.
+Let's say there is a river near the right hand side of the orchard (to the right of column 8).
+That means the right side of the orchard is wetter than the left side.
+Thus, it make sense to have columns as a blocking factor, which controls for variation from left to right.
+
+Let's say the upper side (row 8) is north, and the lower side (row 1) is south, and
+this experiment happened in the northern hemisphere.
+This means the south side of the orchard is getting more sunlight than the north side.
+Thus, it make sense to have rows as a blocking factor as well, which controls for variation from top to bottom.
+
+# How do I analyze an experiment with blocking factors?
+
+In this experiment, we should do `lm(decrease ~ treatment)`, but what other things should I include in the model?
+
+We can fill out an experimental design table. 
+
+|  sources  |  factor   | levels |
+|:---------:|:---------:|:------:|
+|    row    |   block   |   8    |
+|    col    |   block   |   8    |
+| treatment | treatment |   8    |
+|   spot    |  OU, EU   |   64   |
+
+Rows and columns are blocking factors, and each has 8.
+Treatment is the treatment, and there are 8 treatments.
+Each spot is also a source of variation.
+
+In this example, each spot is a replicate.
+It is also the observational unit (OU). I.e., where the observations were made.
+It is also the experimental unit (EU). I.e., the treatments were applied to each spot.
+
+In many experiments, the observational unit is the experimental unit.
+However, this is not always the case.  
+The rule is to include all sources of variation in the model, other than the observational units.
+Simply put, all factors other than OU.  
+That makes `decrease ~ treatment + rowpos + colpos`
+
+# Visualize the data
+*WARNING*: `rowpos` and `colpos` are recorded as numeric variables in the table (1-8).
+To use them as blocking factors, we need to change them into factors first. 
+```{r}
+OrchardSprays_new <- OrchardSprays %>% 
+  mutate(row.F = as.factor(rowpos)) %>%  # mutate makes new columns based on existing columns  
+  mutate(col.F = as.factor(colpos))
+```
+
+```{r}
+OrchardSprays_new %>% 
+  ggplot(aes(x = treatment, y = decrease)) +
+  geom_boxplot() +
+  ggbeeswarm::geom_quasirandom()+
+  labs(x = "treatments (A-H)",
+       y = "decrease in pest count") +
+  theme_classic()
+```
+# Summary statistics
+```{r}
+OrchardSprays_new %>% 
+  group_by(treatment) %>% 
+  summarise(mean = mean(decrease),
+            var = var(decrease),
+            sd = sd(decrease),
+            n = n()) %>% 
+  ungroup()
+```
+If you look at the variances, this is not ideal. Treatments A and B have a very low variance.
+Treatments E and F have larger variances, but it doesn't look like there is a consistent trend on how variances change with means.
+I don't think a log or logit transformation would be helpful.
+
+(If you are interested, you can try log and logit transformation and compare the results.)
+But for now we'll go with the original scale.
+
+# Linear model
+```{r}
+model_spray <- lm(decrease ~ row.F + col.F + treatment, data = OrchardSprays_new)
+```
+
+Now let's check the assumptions of linear models 
+## First off, normality.
+```{r}
+plot(model_spray, which = 2)
+```
+
+That's more or less okay.
+
+## Second, equal variance across groups
+```{r}
+plot(model_spray, which = c(1, 3))
+```
+It looks rather okay to me. The spread is lower when the mean is lower, but overall it looks fine.  
+
+## ANOVA
+```{r}
+anova(model_spray)
+```
+
+Treatment has a F value of 21, which rejects the null hypothesis of F = 1.
+Row has a F value of 1.79, and 
+Column has a F value of 1.35. The null hypothesis of F = 1 is not rejected (p > 0.05).
+This means rows and columns do not explain much variation in this experiment.
+This is actually a good thing. 
+It means the row and column positions are not something you should worry about. 
+Kind of a reassuring result, don't you think? 
+
+## Tukey tests
+Now we know there are differences among the means of different treatments.
+Let's find out which treatment is the most effective (i.e highest decrease in pest).
+Again we'll use the `emmeans` function. It will be the same thing as what we did last time.
+```{r}
+estimate_spray <- emmeans(model_spray, pairwise ~ treatment)
+```
+Since we have 8 treatments, we have 8 choose 2 = 28 different comparisons.
+Let's pull out the cld (compact letter display).
+```{r}
+cld(estimate_spray$emmeans, Letters = letters)
+```
+What does this mean?
+It means:
+
+1.  The means of treatments ABCD are not significantly different from each other, because they all share the letter "a".
+2.  The means of treatments DE are not significantly different from each other, because they both share the letter "b".
+3.  The means of treatments EGFH are not significantly different from each other, because they all share the letter "c".
+
+From this we can conclude that treatment GFH are the most effective treatments by Tukey tests.
+Note that treatment H is numerically the highest,
+but it is not detected as significantly different from treatments F,G and E.
+How to reconcile that? There are two ways.
+
+1.  The numerically greatest mean is due to pure chance. If you were to perform the experiment again, the mean of H may be lower next time.
+2.  The mean of H is actually higher than the rest, but this experiment does not have enough power to detect that.
+    If you were to re-run the experiment with larger sample sizes (say 16 instead of 8),
+    you might detect a significant difference between H and the rest.
+
+Based on the means, H is ~20 higher than the next highest (F and G). It's likely that interpretation 2) is correct.
+
+Note that although A shares the letter "a" with B, and H shares the letter "c" with F,
+*IN NO WAY* this proves mean(A) = mean(B), or mean(H) = mean(F).
+
+Again, when you interpret P values and the letter grouping,
+be thoughtful and careful on what they could mean, and what they don't mean.
+
+# Including a continuous blocking factor (a covariate) 
+A covariate is a continuous variable that can influence the response variable, 
+but it is not the focus of the experiment. 
+This can be used to control for unintended variations. 
+
+Let's use the penguins dataset as an example. 
+```{r}
+penguins <- read_csv("../Data/S4_example1.csv")
+head(penguins)
+```
+
+Let's say you want to compare the bill length between 3 species of penguins. 
+You want to use body mass as a covariate to control for unintended variations due to body mass,
+since penguins with a higher body mass may contribute to a longer bill. 
+```{r}
+model_body_mass <- lm(bill_len ~ body_mass + species, data = penguins)
+anova(model_body_mass)
+```
+In this case, the F statistic for body mass is 623, which is even higher than the F statistic for species (399).
+From this, you can interpret that body mass explains a higher amount of variance in bill length than species. 
+If you want to see for yourself, you can plot it. 
+```{r}
+penguins %>% 
+  ggplot(aes(x = body_mass, y = bill_len)) +
+  geom_point(aes(color = species)) +
+  geom_smooth(aes(color = species), se = F, method = "lm") +
+  scale_color_manual(values = c("tomato1", "orange", "dodgerblue")) +
+  labs(x = "body mass",
+       y = "bill length") +
+  theme_classic()
+```
+And you will see that even within each species, there is a good correlation between body mass and bill length. 
+
+# In class activity
+## Q1
+Load "S6_activity1.csv" from the Data folder. 
+The researcher was testing the effect of different pastures (P1 to P5).
+on the amount of beta-carotene in eggs.
+There were 4 fields (F1 - F4). The fields are the blocking factors.
+In each field, hens were randomly assigned to be fed with one of the 5 pastures.
+At the end of the experiment, eggs were collected and beta-carotene concentration was assayed.
+(Data from UC Davis Plant Sciences course PLS205, Winter 2017) 
+
+1. Visualize the data. 
+2. Set up a linear model. 
+3. Check assumptions of linear models. 
+4. Run ANOVA and interpret the results. Do you think it was a good idea to include field as the blocking factor? 
+5. Run a Tukey test and report results with cld. Which pasture treatment gave the best beta-carotene content?
+
+
+
+

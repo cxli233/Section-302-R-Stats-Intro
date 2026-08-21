@@ -1,0 +1,272 @@
+---
+title: "Session 2 in-class activity"
+author: "Chenxin Li"
+date: "2026-06-22"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+In this lesson, we will go over how to: 
+
+* Calculate summary statistics using tidyverse functions. 
+* Use probability distribution functions in R. 
+
+# Package
+We will need tidyverse. 
+```{r}
+library(tidyverse)
+```
+# Summary statistics  
+Tidyverse has an easy syntax to calculate summary statistics, such as mean and median from data frames using `summarise()`. 
+Summary statistics that can be plugged into `summarise()` includes:
+
+* average: `mean()`
+* median: `median()`
+* variance: `var()`
+* standard deviation: `sd()` 
+* interquartile range: `IQR()`
+* sample size: `n()` 
+
+And many others. 
+
+Let's try it out on a hypothetical experiment. 
+```{r}
+# You can ignore this chunk. 
+trt <- rnorm(n = 10, mean = 10, sd = 1)
+ctrl <- rnorm(n = 10, mean = 6, sd = 1)
+location <- c(rep("A", 5), rep("B", 5))
+
+example_experiment <- data.frame(
+  ctrl,
+  trt,
+  location
+) %>% 
+  pivot_longer(names_to = "treatment", values_to = "response", cols = 1:2)
+
+example_experiment
+```
+
+In this experiment, we have two treatments, control (ctrl) and treated (trt).  
+The experiment was repeated at two locations, A or B.  
+At each location, 10 samples were collected. 
+The dependent variable is recorded in the "response" column. 
+
+If we want to find the mean, median, var, sd, IQR, and n for the whole experiment, 
+we will do: 
+```{r}
+example_experiment_s <- example_experiment %>% 
+  summarise(
+    mean = mean(response), 
+    median = median(response),
+    var = var(response),
+    sd = sd(response),
+    IQR = IQR(response),
+    n = n()
+  ) 
+
+example_experiment_s
+```
+The resulting data frame has 1 row and 6 columns, with each column being a summary statistic. 
+
+## Summary statistics by group 
+It will be more informative to calculate summary statistics by group (ctrl vs. trt)  
+so that we can understand if the treatment had an effect on the dependent variable. 
+To do that, we simply need to perform `group_by(treatment)` before running `summarise()`.
+```{r}
+example_experiment_s_by_group <- example_experiment %>% 
+  group_by(treatment) %>% 
+  summarise(
+    mean = mean(response), 
+    median = median(response),
+    var = var(response),
+    sd = sd(response),
+    IQR = IQR(response),
+    n = n()
+  ) %>% 
+  ungroup()
+
+example_experiment_s_by_group
+```
+
+
+1.  `group_by()` selects which columns you want to summarize from.
+    In this case you just want each treatment to be a group.
+2.  `summarise()` allows you to call the statistical functions, such as mean, sd, and n.
+3.  It's a good practice to `ungroup()` after you are done.
+    Most of the time it doesn't matter, but it will create problems if you don't and you try to switch/modify grouping later.
+
+Now you just get 2 rows and 4 columns with each row as a group. 
+
+Say I want summary statistics for each group and for each location. Can I do that?
+Yes, you just need to also include location in `group_by()`. 
+```{r}
+example_experiment_s_by_group_location <- example_experiment %>% 
+  group_by(treatment, location) %>% 
+  summarise(
+    mean = mean(response), 
+    median = median(response),
+    var = var(response),
+    sd = sd(response),
+    IQR = IQR(response),
+    n = n()
+  ) %>% 
+  ungroup()
+
+example_experiment_s_by_group_location
+```
+
+1.  This time you need to select group and treatment in `group_by()`.
+    Because you want the mean for each group and each location.
+2.  In `summarise()` you call the mean, median, sd, and n functions.
+3.  It's a good practice to `ungroup()` after you are done.
+
+Now each location by treatment combination is a row. 
+Because we have 2 treatments and 2 locations, we should have 2*2 = 4 rows total.  
+In this experiment, we can see that ctrl vs. trt seems different for both locations. 
+
+I hope you can see that `group_by()` followed by `summarise()` is very convenient and powerful. 
+It saves you from having to use for loops to calculate statistics for each group. 
+Instead, `group_by()` automates that.
+
+# Probability distributions in R 
+## Simulate data using probability distributions. 
+R has several probability distributions already built-in, 
+such as uniform, normal, and t. 
+Each distribution comes with a family of functions: r, p, q, d. 
+For example: 
+
+* `rnorm()` lets you simulate random numbers that are normally distributed. 
+* `pnorm()` lets you calculate the probability (upper or lower tail) given a number. 
+* `qnorm()` is the reverse of `pnorm()`, given probability find number. 
+* `dnorm()` lets you find the height of the probability density function at a given value. 
+
+If you need the uniform distribution, these functions will be: `runif()`, `punif()`, `qunif()`, and `dunif()` instead. 
+
+For example, if you want to simulate 10 normally distributed numbers, 
+with mean = 1, and sd = 2, it will be
+```{r}
+norm10 <- rnorm(n = 10, mean = 1, sd = 2)
+norm10
+```
+You will get a vector of 10 values. 
+
+Say you want to find what is the probability of being 2 sd or more away from the mean 
+given a normal distribution. 
+
+"2 sd or more away from the mean" is the same as a normal distribution of mean = 0, 
+sd = 1, and being at a value of 2 or more. We will need the upper tail distribution here, 
+so we will set `lower.tail = F` in `pnorm()`. 
+And we need to multiply by 2 to account for both extremes. 
+We can simply multiply 2 here because normal distribution is symmetrical. 
+```{r}
+pnorm(q = 2, mean = 0, sd = 1, lower.tail = F) * 2 
+```
+It would be 0.046 or 4.6%.  
+
+## Demonstration of central limit theorem. 
+To demonstrate the central limit theorem, let's sample (n=3) from a uniform distribution 20,000 times. 
+For each iteration, we calculate the mean and see what distribution the means fall into. 
+Let's say the uniform distribution ranges from -1 to 1, so the mean would be its midpoint, 0. 
+```{r}
+set.seed(666)
+my_data <- replicate(expr = runif(n = 10 , min = -1, max = 1), n = 20000, simplify = T)  %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  cbind(iteration = 1:20000) %>% 
+  pivot_longer(cols = !iteration, names_to = "name", values_to = "value") %>% 
+  group_by(iteration) %>% 
+  summarise(
+    mean = mean(value)
+  ) %>% 
+  ungroup()
+
+head(my_data)
+```
+
+What happened here: 
+
+1. Drew 3 numbers from the uniform distribution using `runif(n = 10)`
+2. Repeated that 20000 times using `replicate()` 
+3. Transposed the resulting matrix with `t()` such that each row is an iteration 
+4. Converted to data frame using `as.data.frame()`
+5. Performed a wide-to-long transformation using `pivot_longer()` 
+6. Calculated the mean for each iteration. 
+
+```{r}
+my_data %>% 
+  ggplot(aes(x = mean)) +
+  geom_histogram(bins = 100, aes(y = after_stat(density))) +
+  geom_density() +
+  theme_classic()
+```
+You can see this looks like a normal distribution 
+even though the original distribution (uniform distribution) looks nothing like a normal distribution.  
+*Take home message*: Sample means are normally distributed around population mean, 
+even if the population is not normally distributed. 
+
+## Demonstration of the law of large numbers. 
+To demonstrate the law of large numbers, let's sample from a normal distribution with increasing sample sizes. Let's say the normal distribution has mean = 0, sd = 1. 
+
+```{r}
+my_data2 <- list(
+  "3" = rnorm(n = 3, mean = 0, sd = 1),
+  "5" = rnorm(n = 3, mean = 0, sd = 1),
+  "10" = rnorm(n = 10, mean = 0, sd = 1),
+  "20" = rnorm(n = 20, mean = 0, sd = 1),
+  "30" = rnorm(n = 30, mean = 0, sd = 1),
+  "50" = rnorm(n = 50, mean = 0, sd = 1),
+  "100" = rnorm(n = 100, mean = 0, sd = 1),
+  "200" = rnorm(n = 200, mean = 0, sd = 1),
+  "300" = rnorm(n = 300, mean = 0, sd = 1),
+  "500" = rnorm(n = 500, mean = 0, sd = 1),
+  "1000" = rnorm(n = 1000, mean = 0, sd = 1),
+  "2000" = rnorm(n = 2000, mean = 0, sd = 1)
+  ) %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "id") %>% 
+  group_by(id) %>% 
+  summarise(mean = mean(`X[[i]]`)) %>% 
+  ungroup() %>% 
+  mutate(sample_size = as.numeric(id))
+
+my_data2
+```
+
+```{r}
+my_data2 %>% 
+  ggplot(aes(x = sample_size, y = mean)) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_line(color = "tomato1") +
+  geom_point(size = 3) +
+  labs(x = "sample size", y = "sample mean") +
+  theme_classic()
+```
+As you can see with increasing sample size, the sample mean gets closer and closer to the population mean. 
+
+# In class activity 
+# Q1 
+Download the `readxl` package if you haven't. 
+Use the `read_excel()` function to load "S2_activity1.xlsx" from the Data folder. 
+In this [paper](https://link.springer.com/article/10.1186/s12870-020-2243-7), 
+researchers evaluated the regeneration potential (number of buds and shoots) of daylily 
+across 19 different varieties, 3 hormone treatments, and 3 explant types. 
+
+Calculate the mean, sd, and IQR for each variety, hormone treatment, and explant type combination using tidyverse functions. 
+Hint: How many variables do you need in the `group_by()` function? 
+
+# Q2 
+Let's say the population case frequency of a hypothetical disease X is 0.1%. 
+There are two hospitals in town. One of them sees 200 patients a day and the other sees 10 patients a day. 
+One of the hospitals filed a report saying among the patients they saw, 3% were positive for disease X, which is a big deviation from the 0.1% population level.  
+Assuming the population case level for X has not changed, 
+which hospital (the bigger one or the smaller one) likely filed the report? Why is that?  
+Hint: What does the law of large numbers predict? 
+
+# Q3 
+Simulate two data sets with 30 numbers from the normal distribution. 
+Both of them have mean = 0. One of them has a sd of 1, and the other has a sd of 2. 
+Which data set will have a higher IQR? 

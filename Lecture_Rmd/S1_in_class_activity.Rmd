@@ -1,0 +1,144 @@
+---
+title: "Session 1 in-class activity"
+author: "Chenxin Li"
+date: "2026-06-21"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# This is a header 
+## This is a sub-header 
+
+If you change the output to html_notebook, 
+it will automatically render an HTML file on save.   
+You should be able to find the HTML file in the same folder as your .Rmd script. 
+
+You can write any plain text you want here.   
+You can _italicize_ or __bold__ text if you want.  
+You can ~~cross out~~ text as well.  
+You can start a new line using two spaces at the end of a line.  
+
+You can start a list like this: 
+
+* First item of list 
+* Second item of list 
+* Remember to leave an empty line before the first bullet point 
+
+Or like this: 
+
+1. First item
+2. Second item 
+3. If you want numbered list
+
+This RMarkdown is for you to familiarize with RStudio, 
+and learn how to load packages into your session.   
+At the start of your RMarkdown, you want to have a brief 
+introduction section to describe what this script or notebook is doing. 
+
+# Packages 
+After the introduction section, you will start a new section to load your packages. 
+To do that, you will need to insert a code chunk. 
+The short cut is `ctrl-alt-i` on PC or `cmd-opt-i` on Mac. 
+Now you have a code chunk.  
+```{r}
+# This is where R will run your code. 
+# If you need to write comments here you will need to start the line with a # sign. 
+```
+
+To load a package, you use `library()` function and specify the package name 
+inside the parentheses.   
+To run a code chunk, click the green triangle at the upper right of the code chunk.  
+Or you can do `ctrl-enter` on a PC or `cmd-enter` on a Mac to run line-by-line. 
+
+```{r}
+library(tidyverse) 
+```
+
+You might get some warning messages regarding the version of R.  
+As long as there is no error messages, you are all good. 
+ 
+The tidyverse is a collection of packages for data science and visualization.  
+These packages use a similar style of syntax and design principal.  
+While it is not the fastest or keystroke efficient, we will adopt these packages 
+due to how intuitive they are. 
+
+# How to get help 
+Say you want to know how to use the `head()` function. 
+You type ?head in the console.  
+RStudio will pull up the help page in the lower right corner.  
+It should say "returns the first or last parts of objects" or something similar. 
+
+# Formatting a table in markdown 
+To render a table in html using markdown, you do the following: 
+
+|  Header1  |  Header1  | Header3|
+|:---------:|:---------:|:------:|
+|     1,1   |   1,2     | 1,3    |
+|     2,1   |   2,2     | 2,2    |
+
+You can check in the html file to see if the table has been rendered correctly. 
+The alignment of text is controlled by `|:---:|` syntax.
+
+* `|:---:|` means aligned at the center. 
+* `|:---|` means aligned to the left (also the default).  
+* `|---:|` means aligned to the right. 
+
+# In-class activity 
+Start a new Rmd file. 
+Change output from html_document to html_notebook
+
+# Q1 
+Briefly introduce yourself. 
+	* Which degree program are you in? 
+	* What year are you in? 
+	* If known, which lab are you part of? Very briefly describe what you are working on. 
+	* What do you want to learn in 302? 
+
+Feel free to use formatting options such as italic, bold, lists, and headers.  
+
+# Q2
+Consider this hypothetical experiment:  
+You were interested in the effect of mechanical stimulation on plant defense. 
+You had 2 trays of plants with 30 plants in each tray. For one tray you used a paint brush to touch the plant 3 times a day. 
+For the other tray you didn't do anything (the control tray). 
+After 3 months, you randomly sampled leaves from plants in each tray. 
+You took 3 tubes of samples per tray and each tube has 3 leaves.  
+You extracted RNA from each tube and sent the RNA for RNA-seq. 
+
+1. Analyze this experimental design using a table. What was the dependent variable? 
+What were the treatment and sources of variation? 
+What were the experimental and observational units? 
+How many levels were there per treatment, and what was the sample size? 
+Hint: How many tubes of RNA are you sending out? 
+
+2. If it costs $5 per sample for RNA extraction, and 
+$200 per sample for library prep + sequencing, how much will this experiment cost?  
+
+# Q3 
+You are working on chemical manufacturing using plant tissue culture. 
+You believe a substance (compound X) can stimulate flavor production in wasabi tissue culture. 
+You prepared 4 different growth media with concentrations of X at 0, 1, 10, 100 mM.  
+Growth media were poured into 10 petri dishes per concentration. 
+20 tissue pieces of wasabi were grown in each petri dish. 
+2 weeks after culturing, you took 3 samples per treatment by taking 5
+tissue pieces per sample, where tissue pieces were randomly chosen across petri dishes per treatment. 
+Each sample is collected into a test tube.
+For each test tube, you ground the tissue into fine powder, extracted metabolites,  
+and brought them to the Mass Spec Core for metabolite profiling. 
+Using the mass spec result, you quantified two main flavor compounds from wasabi: sinigrin and 6-(Methylsulfinyl)hexylglucosinolate.
+
+1. Analyze this experimental design using a table. What were the dependent variables?
+What were the treatments and sources of variation? 
+What were the experimental and observational units? 
+How many levels were there per treatment, and what was the sample size? 
+Hint: How many samples of metabolites do you need to run on the mass spec? 
+
+2. Let's say it takes 10 min per sample to run on the mass spec, 
+and the mass spec core charges $56 per hour.  
+Your PI told you that you can only spend $300 or less at the Mass Spec Core. 
+Will you have enough funds for this experiment?  
+ 
+
